@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>คำนวณค่า Gini Index (เงินออม) — ภาค × ปี</title>
+  <style>
+    :root {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Thai", "Noto Sans", Arial, sans-serif;
+      color: #111827;
+    }
+    body { margin: 0; padding: 24px; background: #f8fafc; }
+    .card {
+      max-width: 780px; margin: 0 auto; background: white; border: 1px solid #e5e7eb;
+      border-radius: 14px; padding: 18px 18px 16px; box-shadow: 0 6px 20px rgba(17,24,39,.06);
+    }
+    h1 { font-size: 20px; margin: 0 0 10px; }
+    p { margin: 0 0 14px; color: #374151; line-height: 1.45; }
+    .grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0 14px;
+    }
+    label { display: block; font-weight: 600; margin-bottom: 6px; }
+    select, input {
+      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #d1d5db;
+      font-size: 14px; background: white;
+    }
+    .result {
+      padding: 14px 14px; border-radius: 12px; background: #f1f5f9; border: 1px solid #e2e8f0;
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .value { font-size: 22px; font-weight: 800; }
+    .hint { font-size: 12px; color: #475569; }
+    .footer { margin-top: 12px; font-size: 12px; color: #64748b; }
+    .badge { display:inline-block; padding: 3px 8px; border-radius: 999px; background:#e0f2fe; color:#075985; font-weight:600; font-size:12px; }
+    @media (max-width: 620px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>คำนวณค่า <span class="badge">Gini Index</span> ของเงินออม (ภายในแต่ละภาค ระหว่างจังหวัด) แยกตามปี</h1>
+    <p>แหล่งข้อมูล: ชีต <b>Gini_ภาค_ปี</b> จากไฟล์ Excel ของคุณ (ค่าช่วง 0–1) — เลือก <b>ภาค</b> และ <b>ปี</b> เพื่อดูค่า Gini</p>
+
+    <div class="grid">
+      <div>
+        <label for="region">ภาค</label>
+        <select id="region"></select>
+      </div>
+      <div>
+        <label for="year">ปี</label>
+        <select id="year"></select>
+      </div>
+    </div>
+
+    <div class="result">
+      <div>
+        <div class="hint">ผลลัพธ์ Gini</div>
+        <div class="value" id="giniValue">—</div>
+      </div>
+      <div style="text-align:right">
+        <div class="hint">แปลงเป็นเปอร์เซ็นต์</div>
+        <div class="value" id="giniPct" style="font-size:18px">—</div>
+      </div>
+    </div>
+
+    <div class="footer">
+      หมายเหตุ: ค่า Gini ใกล้ 0 = กระจายเท่า ๆ กันมากขึ้น, ใกล้ 1 = เหลื่อมล้ำมากขึ้น (ในที่นี้คือ “ระหว่างจังหวัดภายในภาค”)
+    </div>
+  </div>
+
+<script>
+  const DATA = {"กรุงเทพมหานคร และ 3 จังหวัด": {"2556": 0.3230810111922837, "2558": 0.26129892936394516, "2560": 0.1520374410059473, "2562": 0.21121839702148248, "2564": 0.08212394703082682, "2566": 0.14911074367127908}, "ภาคเหนือ": {"2556": 0.26688854801377926, "2558": 0.17568250833190602, "2560": 0.21168445807258318, "2562": 0.23519946889321264, "2564": 0.23269390562897296, "2566": 0.19638118186195563}, "ภาคใต้": {"2556": 0.22654718776270144, "2558": 0.2493259743719789, "2560": 0.2993009394464494, "2562": 0.24835500589633486, "2564": 0.33520071697060283, "2566": 0.31927290128304864}, "ภาคกลาง": {"2556": 0.2850113978573712, "2558": 0.2951958670515402, "2560": 0.23866341699156557, "2562": 0.27652240091218694, "2564": 0.22028145169732616, "2566": 0.25083718592756576}, "ภาคตะวันออกเฉียงเหนือ": {"2556": 0.3297387819124169, "2558": 0.34449135571957057, "2560": 0.30275637277752, "2562": 0.3276294777121955, "2564": 0.1912555510125784, "2566": 0.22506383674377628}};
+
+  const regionEl = document.getElementById('region');
+  const yearEl = document.getElementById('year');
+  const giniValueEl = document.getElementById('giniValue');
+  const giniPctEl = document.getElementById('giniPct');
+
+  function uniq(arr) {
+    return Array.from(new Set(arr));
+  }
+
+  function populate() {
+    const regions = Object.keys(DATA).sort((a,b)=>a.localeCompare(b,'th'));
+    regionEl.innerHTML = regions.map(r => `<option value="${r}">${r}</option>`).join('');
+
+    const years = uniq(regions.flatMap(r => Object.keys(DATA[r])))
+      .map(x => parseInt(x,10))
+      .sort((a,b)=>a-b)
+      .map(String);
+
+    yearEl.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+  }
+
+  function update() {
+    const r = regionEl.value;
+    const y = yearEl.value;
+    const v = (DATA[r]||{})[y];
+
+    if (v === undefined) {
+      giniValueEl.textContent = "ไม่มีข้อมูล";
+      giniPctEl.textContent = "—";
+      return;
+    }
+
+    const rounded = (Math.round(v * 10000) / 10000).toFixed(4);
+    const pct = (Math.round(v * 10000) / 100).toFixed(2) + "%";
+
+    giniValueEl.textContent = rounded;
+    giniPctEl.textContent = pct;
+  }
+
+  populate();
+  update();
+
+  regionEl.addEventListener('change', update);
+  yearEl.addEventListener('change', update);
+</script>
+</body>
+</html>
